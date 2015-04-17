@@ -1,2 +1,0 @@
-./builder
-fswatch-run lib test ./builder
