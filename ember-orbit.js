@@ -1052,13 +1052,13 @@ define('ember-orbit/schema', ['exports', 'orbit-common/schema', 'ember-orbit/fie
             var rel = record.__rel[link] = {};
             linkValue.forEach(function(id) {
               if (typeof id === 'object') {
-                id = id.get('primaryId');
+                id = get(id, 'primaryId');
               }
               rel[id] = true;
             });
 
           } else if (typeof linkValue === 'object') {
-            record.__rel[link] = linkValue.get('primaryId');
+            record.__rel[link] = get(linkValue, 'primaryId');
 
           } else {
             record.__rel[link] = linkValue;
