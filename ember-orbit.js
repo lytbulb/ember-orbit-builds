@@ -1436,7 +1436,7 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
     },
 
     _didTransform: function(operation, inverse) {
-     console.log('_didTransform', operation.serialize());
+     // console.log('_didTransform', operation.serialize());
 
       var op = operation.op,
           path = operation.path,
