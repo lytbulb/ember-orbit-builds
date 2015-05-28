@@ -1158,7 +1158,7 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
       });
     },
 
-    _fireHook: function(type, event, hookArguments){
+    _triggerHook: function(type, event, hookArguments){
       var observer = this.container.lookup("observer:" + type);
       if(observer) observer.trigger.apply(observer, [event].concat(hookArguments));
     },
@@ -1262,8 +1262,10 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
         return _this._lookupFromData(type, data);
       });
 
+      _this._triggerHook(type, 'beforeAddRecord', properties);
+
       return this._request(promise).then(function(record){
-        _this._fireHook(type, 'afterAddRecord', [record]);
+        _this._triggerHook(type, 'afterAddRecord', [record]);
         return record;
       });
     },
@@ -1276,8 +1278,10 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
       var record = this._lookupRecord(type, id);
       var promise = this.orbitSource.remove(type, id);
 
+      _this._triggerHook(type, 'beforeRemoveRecord', record);
+
       return this._request(promise).then(function(){
-        _this._fireHook(type, 'afterRemoveRecord', [record]);
+        _this._triggerHook(type, 'afterRemoveRecord', [record]);
       });
     },
 
@@ -1286,11 +1290,13 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
       this._verifyType(type);
       id = this._normalizeId(id);
 
+      var record = _this._lookupRecord(type, id);
       var promise = this.orbitSource.patch(type, id, field, value);
 
+      _this._triggerHook(type, 'beforePatchRecord', [record, field, value]);
+
       return this._request(promise).then(function(){
-        var record = _this._lookupRecord(type, id);
-        _this._fireHook(type, 'afterPatchRecord', [record, field, value]);
+        _this._triggerHook(type, 'afterPatchRecord', [record, field, value]);
       });
     },
 
@@ -1300,13 +1306,15 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
       id = this._normalizeId(id);
       relatedId = this._normalizeId(relatedId);
 
+      var record = _this._lookupRecord(type, id);
       var promise = this.orbitSource.addLink(type, id, field, relatedId);
+      var linkType = _this.schema.linkProperties(type, field).model;
+      var value = _this._lookupRecord(linkType, relatedId);
+
+      _this._triggerHook(type, 'beforeAddLink', [record, field, value]);
 
       return this._request(promise).then(function(){
-        var record = _this._lookupRecord(type, id);
-        var linkType = _this.schema.linkProperties(type, field).model;
-        var value = _this._lookupRecord(linkType, relatedId);
-        _this._fireHook(type, 'afterAddLink', [record, field, value]);
+        _this._triggerHook(type, 'afterAddLink', [record, field, value]);
       });
     },
 
@@ -1316,13 +1324,15 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
       id = this._normalizeId(id);
       relatedId = this._normalizeId(relatedId);
 
+      var record = _this._lookupRecord(type, id);
       var promise = this.orbitSource.removeLink(type, id, field, relatedId);
+      var linkType = _this.schema.linkProperties(type, field).model;
+      var value = _this._lookupRecord(linkType, relatedId);
+
+      _this._triggerHook(type, 'beforeRemoveLink', [record, field, value]);
 
       return this._request(promise).then(function(){
-        var record = _this._lookupRecord(type, id);
-        var linkType = _this.schema.linkProperties(type, field).model;
-        var value = _this._lookupRecord(linkType, relatedId);
-        _this._fireHook(type, 'afterRemoveLink', [record, field, value]);
+        _this._triggerHook(type, 'afterRemoveLink', [record, field, value]);
       });
     },
 
@@ -1436,7 +1446,7 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
     },
 
     _didTransform: function(operation, inverse) {
-     // console.log('_didTransform', operation.serialize());
+     console.log('_didTransform', operation.serialize());
 
       var op = operation.op,
           path = operation.path,
