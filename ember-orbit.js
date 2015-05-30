@@ -549,7 +549,6 @@ define('ember-orbit/record-array-manager', ['exports', 'ember-orbit/record-array
           value = operation.value;
 
       var operationType = this._operationEncoder.identify(operation);
-      console.log('_processChange', operationType, path.join("/"), operation.value);
 
       switch(operationType) {
         case 'addRecord': return this._recordWasChanged(record);
@@ -619,12 +618,10 @@ define('ember-orbit/record-array-manager', ['exports', 'ember-orbit/record-array
         });
 
         removed.forEach(function(record){
-          console.log("removing object", record);
           link.removeObject(record);
         });
 
         added.forEach(function(record){
-          console.log("adding object", record);
           link.addObject(record);
         });
       }
@@ -1449,7 +1446,6 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
       this._verifyType(linkType);
 
       var links = this.orbitSource.retrieve([type, id, '__rel', field]);
-      console.log("retrieveLinks", [type, id, field].join("/"), links);
       if(links === OC['default'].LINK_NOT_INITIALIZED) throw new Error("Link " + [type,id,field].join("/") + " is not loaded. Add it to your includes e.g. find('" + type + "', '" + id + "', {include: ['" + field + "']})");
       var relatedIds = Object.keys(links);
 
