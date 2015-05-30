@@ -491,7 +491,7 @@ define('ember-orbit/model', ['exports', 'ember-orbit/links/has-one-object', 'emb
   exports['default'] = Model;
 
 });
-define('ember-orbit/record-array-manager', ['exports', 'ember-orbit/record-arrays/record-array', 'ember-orbit/record-arrays/filtered-record-array'], function (exports, RecordArray, FilteredRecordArray) {
+define('ember-orbit/record-array-manager', ['exports', 'ember-orbit/record-arrays/record-array', 'ember-orbit/record-arrays/filtered-record-array', 'orbit-common/operation-encoder'], function (exports, RecordArray, FilteredRecordArray, OperationEncoder) {
 
   'use strict';
 
@@ -511,6 +511,10 @@ define('ember-orbit/record-array-manager', ['exports', 'ember-orbit/record-array
       this.filteredRecordArrays = Ember.MapWithDefault.create({
         defaultValue: function() { return []; }
       });
+
+      var schema = get(this, 'store.orbitSource.schema');
+
+      this._operationEncoder = new OperationEncoder['default'](schema);
 
       this.changes = [];
     },
@@ -533,38 +537,31 @@ define('ember-orbit/record-array-manager', ['exports', 'ember-orbit/record-array
     },
 
     _processChange: function(record, operation) {
-  //    console.log('_processChange', record, operation);
 
       var path = operation.path,
           op = operation.op,
           value = operation.value;
 
-      if (path.length === 2) {
-        if (op === 'add') {
-          this._recordWasChanged(record);
-          return;
+      var operationType = this._operationEncoder.identify(operation);
+      console.log('_processChange', operationType, path.join("/"), operation.value);
 
-        } else if (op === 'remove') {
-          this._recordWasDeleted(record);
-          return;
-        }
-
-      } else if (path.length === 3 || path.length === 4) {
-        this._recordWasChanged(record);
-        return;
-
-      } else if (path.length === 5) {
-        if (op === 'add') {
-          this._linkWasAdded(record, path[3], path[4]);
-          return;
-
-        } else if (op === 'remove') {
-          this._linkWasRemoved(record, path[3], path[4]);
-          return;
-        }
+      switch(operationType) {
+        case 'addRecord': return this._recordWasChanged(record);
+        case 'removeRecord': return this._recordWasDeleted(record);
+        case 'addAttribute': return this._recordWasChanged(record);
+        case 'replaceAttribute': return this._recordWasChanged(record);
+        case 'removeAttribute': return this._recordWasChanged(record);
+        case 'addHasOne': return this._recordWasChanged(record);
+        case 'replaceHasOne': return this._recordWasChanged(record);
+        case 'removeHasOne': return this._recordWasChanged(record);
+        case 'addHasMany': return this._hasManyWasReplaced(record, path[3], value);
+        case 'replaceHasMany': return this._hasManyWasReplaced(record, path[3], value);
+        case 'removeHasMany': return this._recordWasChanged(record);
+        case 'addToHasMany': return this._linkWasAdded(record, path[3], path[4]);
+        case 'removeFromHasMany': return this._linkWasRemoved(record, path[3], path[4]);
       }
 
-      console.log('!!!! unhandled change', path.length, operation);
+      console.log('!!!! unhandled change', operationType, path.join("/"), operation.value);
     },
 
     _recordWasDeleted: function(record) {
@@ -591,6 +588,39 @@ define('ember-orbit/record-array-manager', ['exports', 'ember-orbit/record-array
           filter = get(array, 'filterFunction');
           this.updateRecordArray(array, filter, type, record);
         }, this);
+      }
+    },
+
+    _hasManyWasReplaced: function(record, key, linkValue){
+      var type = record.constructor.typeKey;
+      var store = get(this, 'store');
+      var linkType = get(store, 'schema').linkProperties(type, key).model;
+      var recordIds = Object.keys(linkValue);
+
+      if (linkType) {
+        var link = get(record, key);
+
+        var replacementRecords = recordIds.map(function(recordId){
+          return store.retrieve(linkType, recordId);
+        });
+
+        var removed = link.filter(function(record){
+          return !replacementRecords.contains(record);
+        });
+
+        var added = replacementRecords.filter(function(record){
+          return !link.contains(record);
+        });
+
+        removed.forEach(function(record){
+          console.log("removing object", record);
+          link.removeObject(record);
+        });
+
+        added.forEach(function(record){
+          console.log("adding object", record);
+          link.addObject(record);
+        });
       }
     },
 
@@ -1118,7 +1148,7 @@ define('ember-orbit/source', ['exports', 'ember-orbit/schema', 'orbit-common/sou
   exports['default'] = Source;
 
 });
-define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model', 'ember-orbit/record-array-manager', 'orbit-common/memory-source'], function (exports, Source, Model, RecordArrayManager, OCMemorySource) {
+define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model', 'ember-orbit/record-array-manager', 'orbit-common/memory-source', 'orbit-common/operation-encoder', 'orbit-common/main'], function (exports, Source, Model, RecordArrayManager, OCMemorySource, OperationEncoder, OC) {
 
   'use strict';
 
@@ -1150,9 +1180,11 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
       this._recordArrayManager = RecordArrayManager['default'].create({
         store: this
       });
+
+      this._operationEncoder = new OperationEncoder['default'](this.orbitSource.schema);
     },
 
-    _triggerHook: function(type, event, hookArguments){
+    _fireHook: function(type, event, hookArguments){
       var observer = this.container.lookup("observer:" + type);
       if(observer) observer.trigger.apply(observer, [event].concat(hookArguments));
     },
@@ -1256,10 +1288,8 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
         return _this._lookupFromData(type, data);
       });
 
-      _this._triggerHook(type, 'beforeAddRecord', properties);
-
       return this._request(promise).then(function(record){
-        _this._triggerHook(type, 'afterAddRecord', [record]);
+        _this._fireHook(type, 'afterAddRecord', [record]);
         return record;
       });
     },
@@ -1272,10 +1302,9 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
       var record = this._lookupRecord(type, id);
       var promise = this.orbitSource.remove(type, id);
 
-      _this._triggerHook(type, 'beforeRemoveRecord', record);
-
+      _this._fireHook(type, 'beforeRemoveRecord', [record]);
       return this._request(promise).then(function(){
-        _this._triggerHook(type, 'afterRemoveRecord', [record]);
+        _this._fireHook(type, 'afterRemoveRecord', [record]);
       });
     },
 
@@ -1284,13 +1313,11 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
       this._verifyType(type);
       id = this._normalizeId(id);
 
-      var record = _this._lookupRecord(type, id);
       var promise = this.orbitSource.patch(type, id, field, value);
 
-      _this._triggerHook(type, 'beforePatchRecord', [record, field, value]);
-
       return this._request(promise).then(function(){
-        _this._triggerHook(type, 'afterPatchRecord', [record, field, value]);
+        var record = _this._lookupRecord(type, id);
+        _this._fireHook(type, 'afterPatchRecord', [record, field, value]);
       });
     },
 
@@ -1300,15 +1327,13 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
       id = this._normalizeId(id);
       relatedId = this._normalizeId(relatedId);
 
-      var record = _this._lookupRecord(type, id);
       var promise = this.orbitSource.addLink(type, id, field, relatedId);
-      var linkType = _this.schema.linkProperties(type, field).model;
-      var value = _this._lookupRecord(linkType, relatedId);
-
-      _this._triggerHook(type, 'beforeAddLink', [record, field, value]);
 
       return this._request(promise).then(function(){
-        _this._triggerHook(type, 'afterAddLink', [record, field, value]);
+        var record = _this._lookupRecord(type, id);
+        var linkType = _this.schema.linkProperties(type, field).model;
+        var value = _this._lookupRecord(linkType, relatedId);
+        _this._fireHook(type, 'afterAddLink', [record, field, value]);
       });
     },
 
@@ -1318,15 +1343,13 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
       id = this._normalizeId(id);
       relatedId = this._normalizeId(relatedId);
 
-      var record = _this._lookupRecord(type, id);
       var promise = this.orbitSource.removeLink(type, id, field, relatedId);
-      var linkType = _this.schema.linkProperties(type, field).model;
-      var value = _this._lookupRecord(linkType, relatedId);
-
-      _this._triggerHook(type, 'beforeRemoveLink', [record, field, value]);
 
       return this._request(promise).then(function(){
-        _this._triggerHook(type, 'afterRemoveLink', [record, field, value]);
+        var record = _this._lookupRecord(type, id);
+        var linkType = _this.schema.linkProperties(type, field).model;
+        var value = _this._lookupRecord(linkType, relatedId);
+        _this._fireHook(type, 'afterRemoveLink', [record, field, value]);
       });
     },
 
@@ -1405,6 +1428,7 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
       this._verifyType(linkType);
 
       var relatedId = this.orbitSource.retrieve([type, id, '__rel', field]);
+      if(relatedId === OC['default'].LINK_NOT_INITIALIZED) throw new Error("Link " + [type,id,field].join("/") + " is not loaded. Add it to your includes e.g. find('" + type + "', '" + id + "', {include: ['" + field + "']})");
 
       if (linkType && relatedId) {
         return this.retrieve(linkType, relatedId);
@@ -1419,7 +1443,8 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
       this._verifyType(linkType);
 
       var links = this.orbitSource.retrieve([type, id, '__rel', field]);
-      if(links === undefined) throw new Error("Link " + [type,id,field].join("/") + " is not loaded. Add it to your includes e.g. find('" + type + "', '" + id + "', {include: ['" + field + "']})");
+      console.log("retrieveLinks", [type, id, field].join("/"), links);
+      if(links === OC['default'].LINK_NOT_INITIALIZED) throw new Error("Link " + [type,id,field].join("/") + " is not loaded. Add it to your includes e.g. find('" + type + "', '" + id + "', {include: ['" + field + "']})");
       var relatedIds = Object.keys(links);
 
       if (linkType && Ember.isArray(relatedIds) && relatedIds.length > 0) {
@@ -1440,18 +1465,20 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
     },
 
     _didTransform: function(operation, inverse) {
-     console.log('_didTransform', operation.serialize());
+     // console.log('_didTransform', operation.serialize());
+
+     var operationType = this._operationEncoder.identify(operation);
 
       var op = operation.op,
           path = operation.path,
           value = operation.value,
           record = this._lookupRecord(path[0], path[1]);
 
-      if (path.length === 3) {
+      if(['addAttribute', 'replaceAttribute', 'removeAttribute'].indexOf(operationType) !== -1) {
         // attribute changed
         record.propertyDidChange(path[2]);
 
-      } else if (path.length === 4) {
+      } else if(['addHasOne', 'replaceHasOne', 'removeHasOne'].indexOf(operationType) !== -1) {
         // hasOne link changed
         var linkName = path[3];
         var linkValue = this.retrieveLink(path[0], path[1], linkName);
