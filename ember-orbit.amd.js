@@ -1145,7 +1145,7 @@ define('ember-orbit/source', ['exports', 'ember-orbit/schema', 'orbit-common/sou
   exports['default'] = Source;
 
 });
-define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model', 'ember-orbit/record-array-manager', 'orbit-common/memory-source', 'orbit-common/operation-encoder', 'orbit-common/main'], function (exports, Source, Model, RecordArrayManager, OCMemorySource, OperationEncoder, OC) {
+define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model', 'ember-orbit/record-array-manager', 'orbit-common/memory-source', 'orbit-common/operation-encoder', 'orbit-common/main', 'orbit/lib/objects'], function (exports, Source, Model, RecordArrayManager, OCMemorySource, OperationEncoder, OC, objects) {
 
   'use strict';
 
@@ -1324,6 +1324,7 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
       id = this._normalizeId(id);
       relatedId = this._normalizeId(relatedId);
 
+      if(this._linkExists(type, id, field, relatedId)) return Ember.RSVP.resolve();
       var promise = this.orbitSource.addLink(type, id, field, relatedId);
 
       return this._request(promise).then(function(){
@@ -1334,11 +1335,19 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
       });
     },
 
+    _linkExists: function(type, id, field, relatedId){
+      var linkValue = this.orbitSource.retrieveLink(type, id, field);
+      if(!linkValue || linkValue === OC['default'].LINK_NOT_INITIALIZED) return false;
+      return objects.isArray(linkValue) ? linkValue.contains(relatedId) : linkValue === relatedId;
+    },
+
     removeLink: function(type, id, field, relatedId) {
       var _this = this;
       this._verifyType(type);
       id = this._normalizeId(id);
       relatedId = this._normalizeId(relatedId);
+
+      if(!this._linkExists(type, id, field, relatedId)) return Ember.RSVP.resolve();
 
       var promise = this.orbitSource.removeLink(type, id, field, relatedId);
 
