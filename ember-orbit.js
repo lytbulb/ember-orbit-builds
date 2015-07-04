@@ -1440,7 +1440,9 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
       this._verifyType(linkType);
 
       var relatedId = this.orbitSource.retrieve([type, id, '__rel', field]);
-      if(relatedId === OC['default'].LINK_NOT_INITIALIZED) throw new Error("Link " + [type,id,field].join("/") + " is not loaded. Add it to your includes e.g. find('" + type + "', '" + id + "', {include: ['" + field + "']})");
+
+      // todo raise exception if link is not being loaded - need json-api format schemas to track this in meta-data
+      if(relatedId === OC['default'].LINK_NOT_INITIALIZED) return null;
 
       if (linkType && relatedId) {
         return this.retrieve(linkType, relatedId);
@@ -1455,7 +1457,9 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
       this._verifyType(linkType);
 
       var links = this.orbitSource.retrieve([type, id, '__rel', field]);
-      if(links === OC['default'].LINK_NOT_INITIALIZED) throw new Error("Link " + [type,id,field].join("/") + " is not loaded. Add it to your includes e.g. find('" + type + "', '" + id + "', {include: ['" + field + "']})");
+
+      // todo raise exception if link is not being loaded - need json-api format schemas to track this in meta-data
+      if(links === OC['default'].LINK_NOT_INITIALIZED) return [];
       var relatedIds = Object.keys(links);
 
       if (linkType && Ember.isArray(relatedIds) && relatedIds.length > 0) {
