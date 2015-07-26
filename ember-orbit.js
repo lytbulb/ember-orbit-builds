@@ -38,13 +38,11 @@ define('ember-orbit/fields/attr', ['exports'], function (exports) {
     options = options || {};
     options.type = type;
 
-    var meta = {
-      options: options,
-      isAttribute: true
-    };
-
-    return Ember.computed(function(key, value) {
-      if (arguments.length > 1) {
+    return Ember.computed({
+      get: function(key) {
+        return this.getAttribute(key);
+      },
+      set: function(key, value) {
         var oldValue = this.getAttribute(key);
 
         if (value !== oldValue) {
@@ -52,11 +50,11 @@ define('ember-orbit/fields/attr', ['exports'], function (exports) {
         }
 
         return value;
-
-      } else {
-        return this.getAttribute(key);
       }
-    }).meta(meta);
+    }).meta({
+      options: options,
+      isAttribute: true
+    });
   };
 
   exports['default'] = attr;
@@ -75,14 +73,14 @@ define('ember-orbit/fields/has-many', ['exports'], function (exports) {
     options.type = 'hasMany';
     options.model = model;
 
-    var meta = {
+    return Ember.computed({
+      get: function(key) {
+        return this.getLinks(key);
+      }
+    }).meta({
       options: options,
       isLink: true
-    };
-
-    return Ember.computed(function(key) {
-      return this.getLinks(key);
-    }).meta(meta).readOnly();
+    }).readOnly();
   };
 
   exports['default'] = hasMany;
@@ -109,11 +107,13 @@ define('ember-orbit/fields/has-one', ['exports'], function (exports) {
       isLink: true
     };
 
-    return Ember.computed(function(key, value) {
-      var proxy = this.getLink(key);
-
-      if (arguments.length > 1) {
-        var currentValue = get(proxy, 'content');
+    return Ember.computed({
+      get: function(key) {
+        return this.getLink(key);
+      },
+      set: function(key, value) {
+        var proxy = this.getLink(key),
+            currentValue = get(proxy, 'content');
 
         if (value === null) {
           value = undefined;
@@ -127,11 +127,11 @@ define('ember-orbit/fields/has-one', ['exports'], function (exports) {
           }
           set(proxy, 'content', value);
         }
+
+        return proxy;
       }
-
-      return proxy;
-
     }).meta(meta);
+
   };
 
   exports['default'] = hasOne;
@@ -159,8 +159,11 @@ define('ember-orbit/fields/key', ['exports'], function (exports) {
       isKey: true
     };
 
-    return Ember.computed(function(name, value) {
-      if (arguments.length > 1) {
+    return Ember.computed({
+      get: function(name) {
+        return this.getKey(name);
+      },
+      set: function(name, value) {
         var oldValue = this.getKey(name);
 
         if (value !== oldValue) {
@@ -168,9 +171,6 @@ define('ember-orbit/fields/key', ['exports'], function (exports) {
         }
 
         return value;
-
-      } else {
-        return this.getKey(name);
       }
     }).meta(meta);
   };
@@ -182,10 +182,7 @@ define('ember-orbit/links/has-many-array', ['exports', 'ember-orbit/record-array
 
   'use strict';
 
-  var get = Ember.get,
-      set = Ember.set;
-
-  var forEach = Ember.EnumerableUtils.forEach;
+  var get = Ember.get;
 
   /**
    A `HasManyArray` is a `RecordArray` that represents the contents of a has-many
@@ -197,7 +194,7 @@ define('ember-orbit/links/has-many-array', ['exports', 'ember-orbit/record-array
    */
   var HasManyArray = RecordArray['default'].extend(LinkProxyMixin['default'], {
 
-    arrayContentWillChange: function(index, removed, added) {
+    arrayContentWillChange: function(index, removed) {
       var store = get(this, 'store');
       var ownerType = get(this, '_ownerType');
       var ownerId = get(this, '_ownerId');
@@ -253,8 +250,7 @@ define('ember-orbit/links/link-proxy-mixin', ['exports'], function (exports) {
    @module ember-orbit
    */
 
-  var get = Ember.get,
-      set = Ember.set;
+  var get = Ember.get;
 
   var LinkProxyMixin = Ember.Mixin.create({
     store: null,
@@ -308,19 +304,19 @@ define('ember-orbit/model', ['exports', 'ember-orbit/links/has-one-object', 'emb
 
     getKey: function(field) {
       var store = get(this, 'store');
-      var pk = this.constructor.primaryKey;
+      var pk = get(this.constructor, 'primaryKey');
 
       if (pk === field) {
         return this.primaryId;
       } else {
-        var type = this.constructor.typeKey;
+        var type = get(this.constructor, 'typeKey');
         return store.retrieveKey(type, this.primaryId, field);
       }
     },
 
     getAttribute: function(field) {
       var store = get(this, 'store');
-      var type = this.constructor.typeKey;
+      var type = get(this.constructor, 'typeKey');
       var id = get(this, 'primaryId');
 
       return store.retrieveAttribute(type, id, field);
@@ -328,7 +324,7 @@ define('ember-orbit/model', ['exports', 'ember-orbit/links/has-one-object', 'emb
 
     getLink: function(field) {
       var store = get(this, 'store');
-      var type = this.constructor.typeKey;
+      var type = get(this.constructor, 'typeKey');
       var id = get(this, 'primaryId');
 
       var relatedRecord = store.retrieveLink(type, id, field) || null;
@@ -348,10 +344,10 @@ define('ember-orbit/model', ['exports', 'ember-orbit/links/has-one-object', 'emb
 
     getLinks: function(field) {
       var store = get(this, 'store');
-      var type = this.constructor.typeKey;
+      var type = get(this.constructor, 'typeKey');
       var id = get(this, 'primaryId');
 
-      var relatedRecords = store.retrieveLinks(type, id, field) || Ember.A();
+      var relatedRecords = Ember.A(store.retrieveLinks(type, id, field) || []);
 
       var hasManyArray = HasManyArray['default'].create({
         content: relatedRecords,
@@ -368,14 +364,14 @@ define('ember-orbit/model', ['exports', 'ember-orbit/links/has-one-object', 'emb
 
     patch: function(field, value) {
       var store = get(this, 'store');
-      var type = this.constructor.typeKey;
+      var type = get(this.constructor, 'typeKey');
 
       return store.patch(type, this.primaryId, field, value);
     },
 
     addLink: function(field, relatedRecord) {
       var store = get(this, 'store');
-      var type = this.constructor.typeKey;
+      var type = get(this.constructor, 'typeKey');
       var relatedId = relatedRecord ? relatedRecord.primaryId : null;
 
       return store.addLink(type, this.primaryId, field, relatedId);
@@ -383,7 +379,7 @@ define('ember-orbit/model', ['exports', 'ember-orbit/links/has-one-object', 'emb
 
     removeLink: function(field, relatedRecord) {
       var store = get(this, 'store');
-      var type = this.constructor.typeKey;
+      var type = get(this.constructor, 'typeKey');
       var relatedId = relatedRecord ? relatedRecord.primaryId : null;
 
       return store.removeLink(type, this.primaryId, field, relatedId);
@@ -391,7 +387,7 @@ define('ember-orbit/model', ['exports', 'ember-orbit/links/has-one-object', 'emb
 
     remove: function() {
       var store = get(this, 'store');
-      var type = this.constructor.typeKey;
+      var type = get(this.constructor, 'typeKey');
 
       return store.remove(type, this.primaryId);
     },
@@ -401,7 +397,7 @@ define('ember-orbit/model', ['exports', 'ember-orbit/links/has-one-object', 'emb
       this._super();
 
       var store = get(this, 'store');
-      var type = this.constructor.typeKey;
+      var type = get(this.constructor, 'typeKey');
 
       store.unload(type, this.primaryId);
     },
@@ -501,10 +497,7 @@ define('ember-orbit/record-array-manager', ['exports', 'ember-orbit/record-array
 
   'use strict';
 
-  var get = Ember.get,
-      set = Ember.set;
-
-  var forEach = Ember.EnumerableUtils.forEach;
+  var get = Ember.get;
 
   /**
    @class RecordArrayManager
@@ -545,7 +538,6 @@ define('ember-orbit/record-array-manager', ['exports', 'ember-orbit/record-array
     _processChange: function(record, operation) {
 
       var path = operation.path,
-          op = operation.op,
           value = operation.value;
 
       var operationType = this._operationEncoder.identify(operation);
@@ -573,11 +565,10 @@ define('ember-orbit/record-array-manager', ['exports', 'ember-orbit/record-array
       var recordArrays = record._recordArrays;
 
       if (recordArrays) {
-        recordArrays = recordArrays.toArray();
-
-        forEach(recordArrays, function(array) {
-          array.removeObject(record);
-        });
+        recordArrays.toArray()
+          .forEach(function(array) {
+            array.removeObject(record);
+          });
       }
 
       record.destroy();
@@ -589,7 +580,7 @@ define('ember-orbit/record-array-manager', ['exports', 'ember-orbit/record-array
           filter;
 
       if (recordArrays) {
-        forEach(recordArrays, function(array) {
+        recordArrays.forEach(function(array) {
           filter = get(array, 'filterFunction');
           this.updateRecordArray(array, filter, type, record);
         }, this);
@@ -840,10 +831,7 @@ define('ember-orbit/record-arrays/record-array', ['exports'], function (exports)
    @module ember-orbit
    */
 
-  var get = Ember.get,
-      set = Ember.set;
-
-  var forEach = Ember.EnumerableUtils.forEach;
+  var get = Ember.get;
 
   /**
    @class RecordArray
@@ -910,13 +898,13 @@ define('ember-orbit/record-arrays/record-array', ['exports'], function (exports)
     },
 
     _recordsAdded: function(records) {
-      forEach(records, function(record) {
+      records.forEach(function(record) {
         this._recordAdded(record);
       }, this);
     },
 
     _recordsRemoved: function(records) {
-      forEach(records, function(record) {
+      records.forEach(function(record) {
         this._recordRemoved(record);
       }, this);
     },
@@ -930,7 +918,7 @@ define('ember-orbit/record-arrays/record-array', ['exports'], function (exports)
   exports['default'] = RecordArray;
 
 });
-define('ember-orbit/schema', ['exports', 'orbit-common/schema', 'ember-orbit/fields/key', 'orbit/lib/uuid'], function (exports, OrbitSchema, fields__key, uuid) {
+define('ember-orbit/schema', ['exports', 'orbit-common/schema'], function (exports, OrbitSchema) {
 
   'use strict';
 
@@ -939,18 +927,26 @@ define('ember-orbit/schema', ['exports', 'orbit-common/schema', 'ember-orbit/fie
   var proxyProperty = function(source, property, defaultValue) {
     var _property = '_' + property;
 
-    return function(key, value) {
-      if (arguments.length > 1) {
-        this[_property] = value;
-        if (this[source]) {
-          this[source][property] = value;
+    return Ember.computed({
+      set: function(key, value) {
+        if (arguments.length > 1) {
+          this[_property] = value;
+          if (this[source]) {
+            this[source][property] = value;
+          }
         }
+        if (!this[_property]) {
+          this[_property] = defaultValue;
+        }
+        return this[_property];
+      },
+      get: function() {
+        if (!this[_property]) {
+          this[_property] = defaultValue;
+        }
+        return this[_property];
       }
-      if (!this[_property]) {
-        this[_property] = defaultValue;
-      }
-      return this[_property];
-    }.property();
+    });
   };
 
   var Schema = Ember.Object.extend({
@@ -1008,7 +1004,7 @@ define('ember-orbit/schema', ['exports', 'orbit-common/schema', 'ember-orbit/fie
 
       var model = this._modelTypeMap[type];
       if (!model) {
-        model = this.container.lookupFactory('model:' + type);
+        model = get(this, 'container').lookupFactory('model:' + type);
         if (!model) {
           throw new Ember.Error("No model was found for '" + type + "'");
         }
@@ -1037,7 +1033,7 @@ define('ember-orbit/schema', ['exports', 'orbit-common/schema', 'ember-orbit/fie
       return this._schema.models[type].primaryKey.name;
     },
 
-    primaryKeyProperties: function(type, name) {
+    primaryKeyProperties: function(type) {
       return this._schema.models[type].primaryKey;
     },
 
@@ -1102,7 +1098,7 @@ define('ember-orbit/schema', ['exports', 'orbit-common/schema', 'ember-orbit/fie
   exports['default'] = Schema;
 
 });
-define('ember-orbit/source', ['exports', 'ember-orbit/schema', 'orbit-common/source'], function (exports, Schema, OCSource) {
+define('ember-orbit/source', ['exports', 'orbit-common/source'], function (exports, OCSource) {
 
   'use strict';
 
@@ -1151,12 +1147,11 @@ define('ember-orbit/source', ['exports', 'ember-orbit/schema', 'orbit-common/sou
   exports['default'] = Source;
 
 });
-define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model', 'ember-orbit/record-array-manager', 'orbit-common/memory-source', 'orbit-common/operation-encoder', 'orbit-common/main', 'orbit/lib/objects'], function (exports, Source, Model, RecordArrayManager, OCMemorySource, OperationEncoder, OC, objects) {
+define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/record-array-manager', 'orbit-common/memory-source', 'orbit-common/operation-encoder', 'orbit-common/main', 'orbit/lib/objects'], function (exports, Source, RecordArrayManager, OCMemorySource, OperationEncoder, OC, objects) {
 
   'use strict';
 
-  var get = Ember.get,
-      set = Ember.set;
+  var get = Ember.get;
 
   var RSVP = Ember.RSVP;
 
@@ -1479,14 +1474,12 @@ define('ember-orbit/store', ['exports', 'ember-orbit/source', 'ember-orbit/model
       Ember.assert("`type` must be registered as a model in the container", get(this, 'schema').modelFor(type));
     },
 
-    _didTransform: function(operation, inverse) {
+    _didTransform: function(operation) {
      // console.log('_didTransform', operation.serialize());
 
      var operationType = this._operationEncoder.identify(operation);
 
-      var op = operation.op,
-          path = operation.path,
-          value = operation.value,
+      var path = operation.path,
           record = this._lookupRecord(path[0], path[1]);
 
       if(['addAttribute', 'replaceAttribute', 'removeAttribute'].indexOf(operationType) !== -1) {
